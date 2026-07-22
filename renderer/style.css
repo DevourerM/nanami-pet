@@ -1,0 +1,11 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body, main { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+#stage { display: block; width: 100%; height: 100%; cursor: pointer; }
+#voice-toggle, #settings-toggle { position: fixed; z-index: 4; bottom: 108px; display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgb(255 255 255 / 15%); border-radius: 11px; color: #d8d8d8; background: rgb(26 26 26 / 88%); box-shadow: 0 8px 22px rgb(0 0 0 / 28%); cursor: pointer; opacity: .2; transition: opacity .16s ease, background .16s ease, transform .16s ease; }
+#voice-toggle { right: 16px; }
+#settings-toggle { right: 58px; }
+#voice-toggle:hover, #settings-toggle:hover, #voice-toggle:focus-visible, #settings-toggle:focus-visible { opacity: 1; outline: none; background: rgb(43 43 43 / 96%); transform: translateY(-1px); }
+#voice-toggle svg, #settings-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
+main:hover #voice-toggle, main:hover #settings-toggle { opacity: .88; }
+#notice { position: fixed; z-index: 8; right: 16px; bottom: 152px; max-width: 360px; padding: 11px 13px; border: 1px solid rgb(255 255 255 / 16%); border-radius: 10px; color: #ececec; background: rgb(30 30 30 / 96%); font: 12px/1.5 system-ui, sans-serif; box-shadow: 0 8px 28px rgb(0 0 0 / 32%); }

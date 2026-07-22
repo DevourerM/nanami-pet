@@ -1,0 +1,188 @@
+/* global petHost */
+(async () => {
+  const canvas = document.querySelector('#stage');
+  const notice = document.querySelector('#notice');
+  const voiceToggle = document.querySelector('#voice-toggle');
+  const settingsToggle = document.querySelector('#settings-toggle');
+
+  function showNotice(message) {
+    notice.hidden = false;
+    notice.textContent = message;
+  }
+
+  function addScript(source) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = source;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error(`无法加载运行时：${source}`));
+      document.head.append(script);
+    });
+  }
+
+  voiceToggle.addEventListener('click', async () => {
+    const visible = await petHost.toggleComposer();
+    voiceToggle.classList.toggle('is-active', visible);
+  });
+  settingsToggle.addEventListener('click', async () => {
+    const visible = await petHost.toggleSettings();
+    settingsToggle.classList.toggle('is-active', visible);
+  });
+
+  let touchAudio;
+  let volume = 1;
+  function base64ToBlob(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: 'audio/wav' });
+  }
+
+  async function speakEventInput(eventText, playMotion) {
+    try {
+      const result = await petHost.synthesizeEvent(eventText);
+      if (!result || !result.audioBase64) return;
+      playMotion?.();
+      if (touchAudio) {
+        touchAudio.pause();
+        URL.revokeObjectURL(touchAudio.src);
+      }
+      const source = URL.createObjectURL(base64ToBlob(result.audioBase64));
+      touchAudio = new Audio(source);
+      touchAudio.volume = volume;
+      touchAudio.addEventListener('ended', () => {
+        URL.revokeObjectURL(source);
+        petHost.completePlayback();
+      }, { once: true });
+      await touchAudio.play();
+    } catch (error) {
+      console.error('Touch speech failed:', error);
+      petHost.completePlayback();
+    }
+  }
+
+  const { modelUrl, coreUrl, expectedCorePath, petWidth, petModelHeight, settings } = await petHost.bootstrap();
+  if (!coreUrl) {
+    showNotice(`缺少 Cubism Core。请将官方 SDK 的 live2dcubismcore.min.js 放到：${expectedCorePath}`);
+    return;
+  }
+
+  try {
+    await addScript(coreUrl);
+    await addScript('../node_modules/pixi.js/dist/browser/pixi.min.js');
+    await addScript('../node_modules/pixi-live2d-display/dist/cubism4.js');
+    const PIXI = window.PIXI;
+    const { Live2DModel, config } = PIXI.live2d;
+    PIXI.live2d.CubismModel.prototype.getDrawableRenderOrders = function getDrawableRenderOrders() {
+      const drawables = this._model.drawables;
+      return typeof this._model.getRenderOrders === 'function'
+        ? this._model.getRenderOrders()
+        : drawables.renderOrders;
+    };
+    // Live2D 自带动作与待机音频全部静音；语音只由 TTS 输出层负责。
+    config.sound = false;
+    config.motionSync = true;
+
+    const app = new PIXI.Application({
+      view: canvas,
+      width: petWidth,
+      height: window.innerHeight,
+      transparent: true,
+      antialias: true,
+      autoDensity: true,
+      resolution: window.devicePixelRatio,
+    });
+    // 由设置开关控制视线；避免 SDK 自己注册的鼠标监听绕过开关。
+    const model = await Live2DModel.from(modelUrl, { autoInteract: false });
+    const desiredHeight = petModelHeight - 32;
+    model.scale.set(desiredHeight / model.height);
+    model.anchor.set(0.5, 1);
+    model.x = petWidth / 2;
+    model.y = petModelHeight - 10;
+    app.stage.addChild(model);
+    // 保留点击命中，视线跟随则由下方的设置状态单独控制。
+    model.interactive = true;
+    model.on('pointertap', (event) => {
+      model.tap(event.data.global.x, event.data.global.y);
+    });
+
+    let mouseFollow = settings?.mouseFollow !== false;
+    volume = settings?.volume ?? 1;
+    window.addEventListener('pointermove', (event) => {
+      if (mouseFollow) model.focus(event.clientX, event.clientY);
+    });
+    petHost.onSettingsChanged((nextSettings) => {
+      mouseFollow = nextSettings?.mouseFollow !== false;
+      volume = nextSettings?.volume ?? 1;
+      if (!mouseFollow) {
+        // FocusController 的 (0, 0) 就是模型默认的正前方，平滑回正。
+        model.internalModel.focusController.focus(0, 0);
+      }
+    });
+
+    const motionByHitArea = { tou: 'Taptou', xiong: 'Tapxiong', fu: 'Tapfu', tui: 'Taptui', ZT: 'TapZT' };
+    const eventByHitArea = {
+      tou: '（触碰头部）',
+      xiong: '（触碰胸部）',
+      fu: '（触碰腹部）',
+      tui: '（触碰腿部）',
+      ZT: '（触碰身体）',
+    };
+    model.on('hit', (areas) => {
+      const motion = areas.map((area) => motionByHitArea[area]).find(Boolean);
+      const eventText = areas.map((area) => eventByHitArea[area]).find(Boolean);
+      if (eventText) {
+        void speakEventInput(eventText, () => {
+          if (motion) model.motion(motion);
+        });
+      } else if (motion) {
+        model.motion(motion);
+      }
+    });
+
+    let idleTimer;
+    let idleGeneration = 0;
+    function scheduleIdle(generation = idleGeneration) {
+      window.clearTimeout(idleTimer);
+      const delay = 5 * 60 * 1000 + Math.floor(Math.random() * 55 * 60 * 1000);
+      idleTimer = window.setTimeout(() => {
+        void speakEventInput('（长时间无交互）', () => {
+          if (generation !== idleGeneration) return;
+          model.motion(Math.random() < 0.72 ? 'Idle' : 'Leave30_20_30');
+        }).finally(() => {
+          if (generation === idleGeneration) scheduleIdle(generation);
+        });
+      }, delay);
+    }
+    function markInteraction() {
+      idleGeneration += 1;
+      scheduleIdle(idleGeneration);
+    }
+    window.addEventListener('pointerdown', markInteraction);
+    petHost.onActivity(markInteraction);
+    // Start 是模型自带的入场动作。与触碰相同，必须等 LLM 回复和 TTS 音频均准备完成后，才与语音同步启动。
+    void speakEventInput('（入场）', () => model.motion('Start'));
+    scheduleIdle();
+  } catch (error) {
+    console.error(error);
+    showNotice(`模型启动失败：${error.message}`);
+  }
+
+  let dragStart;
+  window.addEventListener('pointerdown', (event) => {
+    if (event.button === 0 && event.shiftKey) {
+      dragStart = { cursorX: event.screenX, cursorY: event.screenY };
+      petHost.move(true, 0, 0);
+      canvas.setPointerCapture(event.pointerId);
+    }
+  });
+  window.addEventListener('pointermove', (event) => {
+    if (!dragStart) return;
+    petHost.move(false, event.screenX - dragStart.cursorX, event.screenY - dragStart.cursorY);
+  });
+  window.addEventListener('pointerup', () => { dragStart = null; });
+  window.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    petHost.menu(event.x, event.y);
+  });
+})();

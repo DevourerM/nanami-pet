@@ -1,0 +1,20 @@
+{
+  "name": "nanami-codex-pet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A transparent Live2D desktop companion for Codex.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "doctor": "node scripts/doctor.js",
+    "tts": "services\\nanami-tts\\start-tts-server.cmd"
+  },
+  "dependencies": {
+    "electron": "43.1.1",
+    "pixi.js": "6.5.10",
+    "pixi-live2d-display": "0.4.0"
+  },
+  "overrides": {
+    "gh-pages": "5.0.0"
+  }
+}

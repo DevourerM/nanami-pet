@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>输入</title><link rel="stylesheet" href="composer.css"></head>
+  <body>
+    <main id="composer">
+      <div id="drag-region" aria-hidden="true"><span></span></div>
+      <section id="input-pane">
+        <div id="attachments" hidden></div>
+        <div id="input-row">
+          <button id="file-select" type="button" aria-label="添加文件"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 6.6-6.6a3 3 0 1 1 4.2 4.2L10 18.4a5 5 0 0 1-7-7l8.1-8.1"/></svg></button>
+          <textarea id="tts-input" maxlength="500" rows="2" autofocus aria-label="输入内容"></textarea>
+          <button id="tts-submit" type="button" aria-label="发送"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-7-5.5 14-2.1-5.1L5 12Z"/><path d="m11.4 13.9 2.1-2.1"/></svg></button>
+        </div>
+      </section>
+    </main>
+    <script src="composer.js"></script>
+  </body>
+</html>

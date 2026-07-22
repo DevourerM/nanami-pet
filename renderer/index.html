@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>七海 · Codex 宠物</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main id="pet" aria-label="七海 Codex 宠物">
+      <canvas id="stage"></canvas>
+      <button id="voice-toggle" type="button" aria-label="打开语音输入" title="语音输入">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10.5v3M9 7v10M13 9v6M17 5v14M21 10.5v3"/></svg>
+      </button>
+      <button id="settings-toggle" type="button" aria-label="打开设置" title="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.3a3.7 3.7 0 1 0 0 7.4 3.7 3.7 0 0 0 0-7.4Z"/><path d="m19.4 13.6 1.2.9-1.8 3.1-1.4-.6a7.9 7.9 0 0 1-1.8 1l-.2 1.5h-3.6l-.3-1.5a8 8 0 0 1-1.8-1l-1.4.6-1.8-3.1 1.2-.9a7 7 0 0 1 0-2.1l-1.2-.9 1.8-3.1 1.4.6a8 8 0 0 1 1.8-1l.3-1.5h3.6l.2 1.5a7.9 7.9 0 0 1 1.8 1l1.4-.6 1.8 3.1-1.2.9a7 7 0 0 1 0 2.1Z"/></svg>
+      </button>
+      <section id="notice" hidden></section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

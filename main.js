@@ -1,10 +1,12 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, globalShortcut, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, globalShortcut, dialog, clipboard } = require('electron');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const { AgentRuntime } = require('./agent/runtime');
+const { buildPrompt } = require('./agent/prompt-builder');
 
 const PET_WIDTH = 420;
 const PET_MODEL_HEIGHT = 740;
@@ -12,11 +14,13 @@ const OUTPUT_WIDTH = 330;
 const OUTPUT_HEIGHT = 78;
 const PET_HEIGHT = PET_MODEL_HEIGHT;
 const COMPOSER_WIDTH = 408;
-const COMPOSER_HEIGHT = 112;
+const COMPOSER_HEIGHT = 104;
 const SETTINGS_WIDTH = 236;
 const SETTINGS_HEIGHT = 456;
 const HISTORY_WIDTH = 420;
 const HISTORY_HEIGHT = 480;
+const TEXT_OUTPUT_WIDTH = 460;
+const TEXT_OUTPUT_HEIGHT = 430;
 const TTS_PORT = 9880;
 const modelPath = path.join(__dirname, 'model', 'nanami.model3.json');
 const bundledCorePath = path.join(__dirname, 'vendor', 'live2dcubismcore.min.js');
@@ -31,17 +35,35 @@ let composerWindow;
 let outputWindow;
 let settingsWindow;
 let historyWindow;
+let textOutputWindow;
 let tray;
 let dragOrigin;
 let composerHasCustomPosition = false;
 let ttsProcess;
 let ttsStartPromise;
 let outputAcceptsMouse = false;
+let petControlHover = false;
+let agentRuntime;
 const attachmentRegistry = new Map();
 const petSettings = { clickThrough: false, alwaysOnTop: true, mouseFollow: true, volume: 1 };
 const llmConfig = { baseUrl: '', apiKey: '', model: '' };
 let conversationMessages = [];
+let officeConversationMessages = [];
 const systemPromptPath = path.join(__dirname, 'prompts', 'nanami-system.md');
+const officePromptPath = path.join(__dirname, 'prompts', 'office-system.md');
+const PRESENT_TEXT_TOOL = {
+  type: 'function',
+  function: {
+    name: 'present_text',
+    description: 'Open a persistent copyable text window for translations, rewrites, extracted text, lists, code, structured results, or other work output the user needs to keep.',
+    parameters: {
+      type: 'object',
+      properties: { content: { type: 'string', description: 'Complete text to show in the persistent window.' } },
+      required: ['content'],
+      additionalProperties: false,
+    },
+  },
+};
 
 function settingsFilePath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -53,7 +75,7 @@ function loadPetSettings() {
     petSettings.clickThrough = Boolean(stored.clickThrough);
     petSettings.alwaysOnTop = stored.alwaysOnTop !== false;
     petSettings.mouseFollow = stored.mouseFollow !== false;
-    petSettings.volume = Number.isFinite(stored.volume) ? Math.max(0, Math.min(1, stored.volume)) : 1;
+    petSettings.volume = Number.isFinite(stored.volume) ? Math.max(0, Math.min(2, stored.volume)) : 1;
     Object.assign(llmConfig, stored.llm || {});
   } catch {}
 }
@@ -66,7 +88,7 @@ function savePetSettings() {
 
 function applyPetSettings() {
   if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.setIgnoreMouseEvents(petSettings.clickThrough, { forward: true });
+    petWindow.setIgnoreMouseEvents(petSettings.clickThrough && !petControlHover, { forward: true });
     petWindow.setAlwaysOnTop(petSettings.alwaysOnTop, petSettings.alwaysOnTop ? 'floating' : 'normal');
   }
   if (composerWindow && !composerWindow.isDestroyed()) {
@@ -83,13 +105,16 @@ function applyPetSettings() {
   if (historyWindow && !historyWindow.isDestroyed()) {
     historyWindow.setAlwaysOnTop(petSettings.alwaysOnTop, petSettings.alwaysOnTop ? 'pop-up-menu' : 'normal');
   }
+  if (textOutputWindow && !textOutputWindow.isDestroyed()) {
+    textOutputWindow.setAlwaysOnTop(petSettings.alwaysOnTop, petSettings.alwaysOnTop ? 'pop-up-menu' : 'normal');
+  }
 }
 
 function updatePetSettings(patch) {
   if (typeof patch.clickThrough === 'boolean') petSettings.clickThrough = patch.clickThrough;
   if (typeof patch.alwaysOnTop === 'boolean') petSettings.alwaysOnTop = patch.alwaysOnTop;
   if (typeof patch.mouseFollow === 'boolean') petSettings.mouseFollow = patch.mouseFollow;
-  if (Number.isFinite(patch.volume)) petSettings.volume = Math.max(0, Math.min(1, patch.volume));
+  if (Number.isFinite(patch.volume)) petSettings.volume = Math.max(0, Math.min(2, patch.volume));
   if (patch.llm && typeof patch.llm === 'object') {
     for (const key of ['baseUrl', 'apiKey', 'model']) {
       if (typeof patch.llm[key] === 'string') llmConfig[key] = patch.llm[key].trim();
@@ -107,11 +132,39 @@ function getSystemPrompt() {
   return fs.readFileSync(systemPromptPath, 'utf8');
 }
 
+function getAgentRuntime() {
+  if (!agentRuntime) {
+    agentRuntime = new AgentRuntime({
+      getConfig: () => ({ ...llmConfig }),
+      getPrompt: buildPrompt,
+    });
+  }
+  return agentRuntime;
+}
+
+function getOfficePrompt() {
+  return fs.readFileSync(officePromptPath, 'utf8');
+}
+
 function parseAssistantReply(content) {
   const match = content.match(/\{[\s\S]*\}/);
   const reply = JSON.parse(match ? match[0] : content);
   if (!reply.speech_ja || !reply.display_zh) throw new Error('LLM did not return the required JSON reply.');
-  return { speech: String(reply.speech_ja), display: String(reply.display_zh) };
+  const presentation = typeof reply.present_text_zh === 'string' ? reply.present_text_zh.trim() : '';
+  return { speech: String(reply.speech_ja), display: String(reply.display_zh), presentation };
+}
+
+async function requestLlmCompletion(endpoint, messages, useTools) {
+  const payload = { model: llmConfig.model, messages, temperature: 0.8 };
+  if (useTools) payload.tools = [PRESENT_TEXT_TOOL];
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmConfig.apiKey}` },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error?.message || `LLM returned ${response.status}`);
+  return body;
 }
 
 async function requestLlm(input) {
@@ -120,22 +173,59 @@ async function requestLlm(input) {
     ? llmConfig.baseUrl.replace(/\/$/, '')
     : `${llmConfig.baseUrl.replace(/\/$/, '')}/chat/completions`;
   const messages = [{ role: 'system', content: getSystemPrompt() }, ...conversationMessages, { role: 'user', content: input }];
-  const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmConfig.apiKey}` }, body: JSON.stringify({ model: llmConfig.model, messages, temperature: 0.8 }) });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error?.message || `LLM returned ${response.status}`);
-  const content = body.choices?.[0]?.message?.content;
+  let body;
+  try {
+    body = await requestLlmCompletion(endpoint, messages, true);
+  } catch (error) {
+    if (!/tool|function/i.test(String(error.message))) throw error;
+    body = await requestLlmCompletion(endpoint, messages, false);
+  }
+  let message = body.choices?.[0]?.message;
+  if (!message) throw new Error('LLM response did not contain a message.');
+  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.filter((call) => call.function?.name === 'present_text') : [];
+  if (toolCalls.length) {
+    const toolResults = toolCalls.map((call) => {
+      let content = '';
+      try { content = String(JSON.parse(call.function.arguments || '{}').content || '').trim(); } catch {}
+      if (content) showTextOutput(content);
+      return { role: 'tool', tool_call_id: call.id, content: JSON.stringify({ shown: Boolean(content) }) };
+    });
+    body = await requestLlmCompletion(endpoint, [...messages, message, ...toolResults], false);
+    message = body.choices?.[0]?.message;
+  }
+  const content = message?.content;
   if (typeof content !== 'string') throw new Error('LLM response did not contain text.');
   const reply = parseAssistantReply(content);
   conversationMessages.push({ role: 'user', content: input }, { role: 'assistant', content });
   return reply;
 }
 
-async function respondAndSynthesize(input) {
-  const reply = await requestLlm(input);
+async function requestOfficeLlm(input) {
+  if (!llmConfig.baseUrl || !llmConfig.apiKey || !llmConfig.model) throw new Error('请先在设置中填写 API 地址、模型和密钥。');
+  const endpoint = llmConfig.baseUrl.replace(/\/$/, '').endsWith('/chat/completions')
+    ? llmConfig.baseUrl.replace(/\/$/, '')
+    : `${llmConfig.baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const messages = [{ role: 'system', content: getOfficePrompt() }, ...officeConversationMessages, { role: 'user', content: input }];
+  const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmConfig.apiKey}` }, body: JSON.stringify({ model: llmConfig.model, messages, temperature: 0.5 }) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error?.message || `LLM returned ${response.status}`);
+  const content = body.choices?.[0]?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) throw new Error('LLM response did not contain text.');
+  const output = content.trim();
+  officeConversationMessages.push({ role: 'user', content: input }, { role: 'assistant', content: output });
+  officeConversationMessages = officeConversationMessages.slice(-16);
+  return output;
+}
+
+async function respondAndSynthesize(input, source = 'user') {
+  const reply = await getAgentRuntime().respond({ input, source });
   await ensureTtsService();
-  const audio = await synthesize(reply.speech);
+  const audio = await synthesize(reply.speech, reply.emotion);
   appendHistory({ input, output: reply.display, createdAt: new Date().toISOString() });
   showOutput(reply.display);
+  for (const skillCall of reply.skillCalls) {
+    if (skillCall.name === 'present_text') showTextOutput(skillCall.arguments.content);
+  }
   return { text: reply.display, audioBase64: audio.toString('base64') };
 }
 
@@ -184,6 +274,26 @@ function registerAttachmentPaths(filePaths) {
   });
 }
 
+function registerClipboardImage(payload) {
+  const rawBytes = payload?.bytes;
+  if (!rawBytes || !(rawBytes instanceof ArrayBuffer || ArrayBuffer.isView(rawBytes))) return [];
+  const image = Buffer.from(rawBytes);
+  if (!image.length || image.length > 25 * 1024 * 1024) return [];
+
+  const extensions = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
+  const extension = extensions[payload?.mimeType] || '.png';
+  const directory = path.join(app.getPath('temp'), 'nanami-pet-attachments');
+  const filename = `clipboard-${randomUUID()}${extension}`;
+  const filePath = path.join(directory, filename);
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(filePath, image, { flag: 'wx' });
+    return registerAttachmentPaths([filePath]);
+  } catch {
+    return [];
+  }
+}
+
 function getCorePath() {
   const configPath = path.join(app.getPath('userData'), 'settings.json');
   try {
@@ -205,6 +315,7 @@ function hidePet() {
   outputWindow?.hide();
   settingsWindow?.hide();
   historyWindow?.hide();
+  textOutputWindow?.hide();
   petWindow?.hide();
 }
 
@@ -250,8 +361,8 @@ async function ensureTtsService() {
   return ttsStartPromise;
 }
 
-function synthesize(text) {
-  const body = Buffer.from(JSON.stringify({ text, speed: 1.0, seed: -1 }));
+function synthesize(text, emotion = 'neutral') {
+  const body = Buffer.from(JSON.stringify({ text, emotion, speed: 1.0, seed: -1 }));
   return new Promise((resolve, reject) => {
     const request = http.request({
       host: '127.0.0.1',
@@ -541,6 +652,61 @@ function toggleHistory() {
   return true;
 }
 
+function initialTextOutputBounds() {
+  const [x, y] = petWindow.getPosition();
+  const workArea = screen.getDisplayNearestPoint({ x, y }).workArea;
+  return {
+    x: Math.max(workArea.x + 12, x - TEXT_OUTPUT_WIDTH - 14),
+    y: Math.max(workArea.y + 12, y + 20),
+    width: TEXT_OUTPUT_WIDTH,
+    height: TEXT_OUTPUT_HEIGHT,
+  };
+}
+
+function createTextOutputWindow() {
+  textOutputWindow = new BrowserWindow({
+    ...initialTextOutputBounds(),
+    icon: appIcon,
+    transparent: true,
+    frame: false,
+    resizable: true,
+    minWidth: 320,
+    minHeight: 240,
+    movable: true,
+    hasShadow: true,
+    alwaysOnTop: petSettings.alwaysOnTop,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+  applyPetSettings();
+  textOutputWindow.loadFile(path.join(__dirname, 'renderer', 'text-output.html'));
+  textOutputWindow.on('close', (event) => {
+    if (!app.isQuiting) {
+      event.preventDefault();
+      textOutputWindow.hide();
+    }
+  });
+}
+
+function showTextOutput(text) {
+  if (!textOutputWindow || textOutputWindow.isDestroyed()) createTextOutputWindow();
+  const present = () => {
+    if (!textOutputWindow || textOutputWindow.isDestroyed()) return;
+    textOutputWindow.setAlwaysOnTop(petSettings.alwaysOnTop, petSettings.alwaysOnTop ? 'pop-up-menu' : 'normal');
+    textOutputWindow.showInactive();
+    textOutputWindow.moveTop();
+    textOutputWindow.webContents.send('text-output:show', text);
+  };
+  if (textOutputWindow.webContents.isLoading()) textOutputWindow.webContents.once('did-finish-load', present);
+  else present();
+}
+
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(appIcon));
   tray.setToolTip('七海 · Codex 宠物');
@@ -601,7 +767,7 @@ ipcMain.on('pet:menu', (_event, { x, y }) => {
 ipcMain.handle('composer:toggle', () => toggleComposer());
 ipcMain.handle('conversation:event', async (_event, eventText) => {
   if (typeof eventText !== 'string' || !eventText.trim()) return false;
-  return respondAndSynthesize(eventText.trim().slice(0, 100));
+  return respondAndSynthesize(eventText.trim().slice(0, 100), 'event');
 });
 ipcMain.on('conversation:playback-ended', finishOutputPlayback);
 ipcMain.on('output:mouse-events', (_event, enabled) => {
@@ -609,6 +775,12 @@ ipcMain.on('output:mouse-events', (_event, enabled) => {
   outputWindow?.setIgnoreMouseEvents(!outputAcceptsMouse);
 });
 ipcMain.on('pet:activity', () => petWindow?.webContents.send('pet:activity'));
+ipcMain.on('pet:controls-hover', (_event, active) => {
+  const nextHover = Boolean(active);
+  if (petControlHover === nextHover) return;
+  petControlHover = nextHover;
+  if (petSettings.clickThrough) petWindow?.setIgnoreMouseEvents(!petControlHover, { forward: true });
+});
 ipcMain.handle('composer:pick-files', async (event) => {
   const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender) || composerWindow, {
     properties: ['openFile', 'multiSelections'],
@@ -616,6 +788,7 @@ ipcMain.handle('composer:pick-files', async (event) => {
   return result.canceled ? [] : registerAttachmentPaths(result.filePaths);
 });
 ipcMain.handle('composer:register-files', (_event, filePaths) => registerAttachmentPaths(filePaths));
+ipcMain.handle('composer:register-clipboard-image', (_event, payload) => registerClipboardImage(payload));
 ipcMain.handle('composer:hide', () => composerWindow?.hide());
 ipcMain.handle('settings:toggle', () => toggleSettings());
 ipcMain.handle('settings:get', () => ({ ...petSettings, llm: { ...llmConfig } }));
@@ -625,13 +798,27 @@ ipcMain.handle('history:get', () => readHistory());
 ipcMain.handle('history:clear', () => { clearHistory(); return []; });
 ipcMain.handle('history:hide', () => historyWindow?.hide());
 ipcMain.handle('history:toggle', () => toggleHistory());
-ipcMain.handle('conversation:clear', () => { conversationMessages = []; return true; });
+ipcMain.handle('text-output:copy', (_event, text) => {
+  if (typeof text === 'string') clipboard.writeText(text);
+  return true;
+});
+ipcMain.handle('text-output:hide', () => textOutputWindow?.hide());
+ipcMain.handle('conversation:clear', () => { agentRuntime?.clearContext(); return true; });
 
 ipcMain.handle('tts:synthesize', async (_event, text) => {
   if (typeof text !== 'string' || !text.trim()) throw new Error('请输入要让七海说的话。');
   const normalized = text.trim();
   if (normalized.length > 500) throw new Error('单次文本不能超过 500 个字符。');
   return respondAndSynthesize(normalized);
+});
+
+ipcMain.handle('office:ask', async (_event, text) => {
+  if (typeof text !== 'string' || !text.trim()) throw new Error('请输入需要处理的文本。');
+  const normalized = text.trim();
+  if (normalized.length > 6000) throw new Error('单次文本不能超过 6000 个字符。');
+  const output = await requestOfficeLlm(normalized);
+  showTextOutput(output);
+  return { text: output };
 });
 
 app.whenReady().then(() => {

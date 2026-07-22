@@ -1,9 +1,29 @@
 /* global petHost */
 (async () => {
   const canvas = document.querySelector('#stage');
+  const pet = document.querySelector('#pet');
   const notice = document.querySelector('#notice');
   const voiceToggle = document.querySelector('#voice-toggle');
   const settingsToggle = document.querySelector('#settings-toggle');
+
+  let controlsHover = false;
+  function updateControlHitTest(event) {
+    const margin = 10;
+    const interactive = [voiceToggle, settingsToggle].some((control) => {
+      const bounds = control.getBoundingClientRect();
+      return event.clientX >= bounds.left - margin && event.clientX <= bounds.right + margin
+        && event.clientY >= bounds.top - margin && event.clientY <= bounds.bottom + margin;
+    });
+    if (interactive === controlsHover) return;
+    controlsHover = interactive;
+    petHost.setControlsHover(interactive);
+  }
+  window.addEventListener('mousemove', updateControlHitTest);
+  window.addEventListener('mouseleave', () => {
+    if (!controlsHover) return;
+    controlsHover = false;
+    petHost.setControlsHover(false);
+  });
 
   function showNotice(message) {
     notice.hidden = false;
@@ -28,9 +48,15 @@
     const visible = await petHost.toggleSettings();
     settingsToggle.classList.toggle('is-active', visible);
   });
+  [voiceToggle, settingsToggle].forEach((control) => {
+    control.addEventListener('mouseenter', () => petHost.setControlsHover(true));
+    control.addEventListener('mouseleave', () => petHost.setControlsHover(false));
+  });
 
   let touchAudio;
+  let audioContext;
   let volume = 1;
+  let eventSpeechBusy = false;
   function base64ToBlob(base64) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -38,26 +64,52 @@
     return new Blob([bytes], { type: 'audio/wav' });
   }
 
-  async function speakEventInput(eventText, playMotion) {
+  async function playWithGain(element, level) {
+    if (level <= 1) {
+      element.volume = level;
+      return element.play();
+    }
+    audioContext ??= new AudioContext();
+    const source = audioContext.createMediaElementSource(element);
+    const gain = audioContext.createGain();
+    gain.gain.value = level;
+    source.connect(gain).connect(audioContext.destination);
+    element.volume = 1;
+    await audioContext.resume();
+    return element.play();
+  }
+
+  async function speakEventInput(eventText, playMotion, beforePlayback) {
+    if (eventSpeechBusy) return false;
+    eventSpeechBusy = true;
     try {
       const result = await petHost.synthesizeEvent(eventText);
-      if (!result || !result.audioBase64) return;
-      playMotion?.();
+      if (!result || !result.audioBase64) return false;
       if (touchAudio) {
         touchAudio.pause();
         URL.revokeObjectURL(touchAudio.src);
       }
       const source = URL.createObjectURL(base64ToBlob(result.audioBase64));
       touchAudio = new Audio(source);
-      touchAudio.volume = volume;
-      touchAudio.addEventListener('ended', () => {
-        URL.revokeObjectURL(source);
-        petHost.completePlayback();
-      }, { once: true });
-      await touchAudio.play();
+      touchAudio.volume = Math.min(volume, 1);
+      beforePlayback?.();
+      playMotion?.();
+      await new Promise((resolve, reject) => {
+        touchAudio.addEventListener('ended', () => {
+          URL.revokeObjectURL(source);
+          petHost.completePlayback();
+          resolve();
+        }, { once: true });
+        touchAudio.addEventListener('error', () => reject(new Error('Touch speech playback failed.')), { once: true });
+        playWithGain(touchAudio, volume).catch(reject);
+      });
+      return true;
     } catch (error) {
       console.error('Touch speech failed:', error);
       petHost.completePlayback();
+      return false;
+    } finally {
+      eventSpeechBusy = false;
     }
   }
 
@@ -103,17 +155,20 @@
     // 保留点击命中，视线跟随则由下方的设置状态单独控制。
     model.interactive = true;
     model.on('pointertap', (event) => {
+      if (eventSpeechBusy) return;
       model.tap(event.data.global.x, event.data.global.y);
     });
 
-    let mouseFollow = settings?.mouseFollow !== false;
-    volume = settings?.volume ?? 1;
+  let mouseFollow = settings?.mouseFollow !== false;
+  volume = settings?.volume ?? 1;
+    pet.classList.toggle('is-click-through', Boolean(settings?.clickThrough));
     window.addEventListener('pointermove', (event) => {
       if (mouseFollow) model.focus(event.clientX, event.clientY);
     });
     petHost.onSettingsChanged((nextSettings) => {
       mouseFollow = nextSettings?.mouseFollow !== false;
       volume = nextSettings?.volume ?? 1;
+      pet.classList.toggle('is-click-through', Boolean(nextSettings?.clickThrough));
       if (!mouseFollow) {
         // FocusController 的 (0, 0) 就是模型默认的正前方，平滑回正。
         model.internalModel.focusController.focus(0, 0);
@@ -129,6 +184,7 @@
       ZT: '（触碰身体）',
     };
     model.on('hit', (areas) => {
+      if (eventSpeechBusy) return;
       const motion = areas.map((area) => motionByHitArea[area]).find(Boolean);
       const eventText = areas.map((area) => eventByHitArea[area]).find(Boolean);
       if (eventText) {
@@ -161,10 +217,17 @@
     window.addEventListener('pointerdown', markInteraction);
     petHost.onActivity(markInteraction);
     // Start 是模型自带的入场动作。与触碰相同，必须等 LLM 回复和 TTS 音频均准备完成后，才与语音同步启动。
-    void speakEventInput('（入场）', () => model.motion('Start'));
+    void speakEventInput(
+      '（入场）',
+      () => model.motion('Start'),
+      () => pet.classList.add('is-ready'),
+    ).then((played) => {
+      if (!played) pet.classList.add('is-ready');
+    });
     scheduleIdle();
   } catch (error) {
     console.error(error);
+    pet.classList.add('is-ready');
     showNotice(`模型启动失败：${error.message}`);
   }
 

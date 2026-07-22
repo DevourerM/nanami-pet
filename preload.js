@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('petHost', {
   bootstrap: () => ipcRenderer.invoke('pet:bootstrap'),
   move: (start, deltaX, deltaY) => ipcRenderer.send('pet:move', { start, deltaX, deltaY }),
   menu: (x, y) => ipcRenderer.send('pet:menu', { x, y }),
+  setControlsHover: (active) => ipcRenderer.send('pet:controls-hover', active),
   toggleComposer: () => ipcRenderer.invoke('composer:toggle'),
   toggleSettings: () => ipcRenderer.invoke('settings:toggle'),
   synthesizeEvent: (eventText) => ipcRenderer.invoke('conversation:event', eventText),
@@ -17,6 +18,7 @@ contextBridge.exposeInMainWorld('composerHost', {
   synthesize: (text) => ipcRenderer.invoke('tts:synthesize', text),
   pickFiles: () => ipcRenderer.invoke('composer:pick-files'),
   registerFiles: (paths) => ipcRenderer.invoke('composer:register-files', paths),
+  registerClipboardImage: (payload) => ipcRenderer.invoke('composer:register-clipboard-image', payload),
   activity: () => ipcRenderer.send('pet:activity'),
   completePlayback: () => ipcRenderer.send('conversation:playback-ended'),
   hide: () => ipcRenderer.invoke('composer:hide'),
@@ -30,6 +32,12 @@ contextBridge.exposeInMainWorld('outputHost', {
   onShow: (callback) => ipcRenderer.on('output:show', (_event, text) => callback(text)),
   onPlaybackEnded: (callback) => ipcRenderer.on('output:playback-ended', callback),
   setMouseEvents: (enabled) => ipcRenderer.send('output:mouse-events', enabled),
+});
+
+contextBridge.exposeInMainWorld('textOutputHost', {
+  copy: (text) => ipcRenderer.invoke('text-output:copy', text),
+  hide: () => ipcRenderer.invoke('text-output:hide'),
+  onShow: (callback) => ipcRenderer.on('text-output:show', (_event, text) => callback(text)),
 });
 
 contextBridge.exposeInMainWorld('settingsHost', {

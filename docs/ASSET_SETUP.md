@@ -45,7 +45,7 @@ vendor/live2dcubismcore.min.js
 同时将对应的日语参考音频放至：
 
 ```text
-assets/voice-reference/
+assets/voice-references/
 ```
 
 启动桌宠时会自动托管该服务并检查 `http://127.0.0.1:9880/health`。如需单独排错，可在 `services/nanami-tts/` 中运行 `start-tts-server.cmd`。
@@ -65,3 +65,18 @@ npm start
 ```
 
 进入设置页配置 LLM 后，发送一条日语或中文消息；若角色能显示中文回复并播放日语语音，说明 LLM、TTS 和模型均已正确连接。
+\n## 多情感参考音频
+
+桌宠会让 LLM 为每次日语回复返回一个情感标签，并据此选择 GPT-SoVITS 参考音频。请将你已授权的分析结果中 `output/references/` 的**全部内容**复制到 `assets/voice-references/`：
+
+```text
+assets/voice-references/
+├── gptsovits_reference_prompts.tsv
+├── neutral_平静/
+│   └── *.ogg
+├── happy_开心/
+│   └── *.ogg
+└── ... 其他情感目录
+```
+
+该目录当前支持 23 个标签（包括 `neutral`、`gentle`、`happy`、`shy`、`teasing` 等）。音频、转写表、模型和运行时均为本地外部资产，禁止提交到此仓库。

@@ -12,7 +12,7 @@
 
 1. 完成 [外部资产安装](docs/ASSET_SETUP.md)。
 2. 安装 Node.js LTS，然后在项目根目录运行 `npm ci`。
-3. 运行 `npm start`，或双击 `启动七海宠物.cmd`。
+3. 双击项目根目录的 `Nanami Pet.exe` 启动桌宠；开发调试时使用 `npm start`。
 4. 在设置中填写 OpenAI 兼容的 API 地址、模型名称与 API Key。密钥仅保存到本机 Electron 用户数据目录，不能提交到 Git。
 
 可运行 `npm run doctor` 检查 Live2D 模型和 Cubism Core 是否已放置。
@@ -29,3 +29,6 @@
 ## 许可与致谢
 
 应用代码以本仓库后续声明的许可为准。角色与第三方资源不随代码授权；其来源、归属与本地准备方式见 [外部资产安装](docs/ASSET_SETUP.md)。
+\n## Windows 启动器
+
+在已放置本地资产并完成 `npm ci` 后，运行 `npm run build:launcher`。它会使用项目根目录的 `icon.png` 生成 `Nanami Pet.exe`。将该 EXE 保留在项目根目录，双击即可启动桌宠，无需使用 BAT；它不会打包或上传 Live2D、GPT-SoVITS 运行时、模型和参考音频。

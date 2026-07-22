@@ -19,6 +19,8 @@ vendor/
 services/nanami-tts/
 assets/
 icon.png
+Nanami Pet.exe
+launcher/.build/
 
 # Generated local media and credentials
 *.wav

@@ -47,23 +47,6 @@ let agentRuntime;
 const attachmentRegistry = new Map();
 const petSettings = { clickThrough: false, alwaysOnTop: true, mouseFollow: true, volume: 1 };
 const llmConfig = { baseUrl: '', apiKey: '', model: '' };
-let conversationMessages = [];
-let officeConversationMessages = [];
-const systemPromptPath = path.join(__dirname, 'prompts', 'nanami-system.md');
-const officePromptPath = path.join(__dirname, 'prompts', 'office-system.md');
-const PRESENT_TEXT_TOOL = {
-  type: 'function',
-  function: {
-    name: 'present_text',
-    description: 'Open a persistent copyable text window for translations, rewrites, extracted text, lists, code, structured results, or other work output the user needs to keep.',
-    parameters: {
-      type: 'object',
-      properties: { content: { type: 'string', description: 'Complete text to show in the persistent window.' } },
-      required: ['content'],
-      additionalProperties: false,
-    },
-  },
-};
 
 function settingsFilePath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -128,10 +111,6 @@ function updatePetSettings(patch) {
   return { ...petSettings, llm: { ...llmConfig } };
 }
 
-function getSystemPrompt() {
-  return fs.readFileSync(systemPromptPath, 'utf8');
-}
-
 function getAgentRuntime() {
   if (!agentRuntime) {
     agentRuntime = new AgentRuntime({
@@ -140,81 +119,6 @@ function getAgentRuntime() {
     });
   }
   return agentRuntime;
-}
-
-function getOfficePrompt() {
-  return fs.readFileSync(officePromptPath, 'utf8');
-}
-
-function parseAssistantReply(content) {
-  const match = content.match(/\{[\s\S]*\}/);
-  const reply = JSON.parse(match ? match[0] : content);
-  if (!reply.speech_ja || !reply.display_zh) throw new Error('LLM did not return the required JSON reply.');
-  const presentation = typeof reply.present_text_zh === 'string' ? reply.present_text_zh.trim() : '';
-  return { speech: String(reply.speech_ja), display: String(reply.display_zh), presentation };
-}
-
-async function requestLlmCompletion(endpoint, messages, useTools) {
-  const payload = { model: llmConfig.model, messages, temperature: 0.8 };
-  if (useTools) payload.tools = [PRESENT_TEXT_TOOL];
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmConfig.apiKey}` },
-    body: JSON.stringify(payload),
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error?.message || `LLM returned ${response.status}`);
-  return body;
-}
-
-async function requestLlm(input) {
-  if (!llmConfig.baseUrl || !llmConfig.apiKey || !llmConfig.model) throw new Error('请先在设置中填写 API 地址、模型和密钥。');
-  const endpoint = llmConfig.baseUrl.replace(/\/$/, '').endsWith('/chat/completions')
-    ? llmConfig.baseUrl.replace(/\/$/, '')
-    : `${llmConfig.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const messages = [{ role: 'system', content: getSystemPrompt() }, ...conversationMessages, { role: 'user', content: input }];
-  let body;
-  try {
-    body = await requestLlmCompletion(endpoint, messages, true);
-  } catch (error) {
-    if (!/tool|function/i.test(String(error.message))) throw error;
-    body = await requestLlmCompletion(endpoint, messages, false);
-  }
-  let message = body.choices?.[0]?.message;
-  if (!message) throw new Error('LLM response did not contain a message.');
-  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.filter((call) => call.function?.name === 'present_text') : [];
-  if (toolCalls.length) {
-    const toolResults = toolCalls.map((call) => {
-      let content = '';
-      try { content = String(JSON.parse(call.function.arguments || '{}').content || '').trim(); } catch {}
-      if (content) showTextOutput(content);
-      return { role: 'tool', tool_call_id: call.id, content: JSON.stringify({ shown: Boolean(content) }) };
-    });
-    body = await requestLlmCompletion(endpoint, [...messages, message, ...toolResults], false);
-    message = body.choices?.[0]?.message;
-  }
-  const content = message?.content;
-  if (typeof content !== 'string') throw new Error('LLM response did not contain text.');
-  const reply = parseAssistantReply(content);
-  conversationMessages.push({ role: 'user', content: input }, { role: 'assistant', content });
-  return reply;
-}
-
-async function requestOfficeLlm(input) {
-  if (!llmConfig.baseUrl || !llmConfig.apiKey || !llmConfig.model) throw new Error('请先在设置中填写 API 地址、模型和密钥。');
-  const endpoint = llmConfig.baseUrl.replace(/\/$/, '').endsWith('/chat/completions')
-    ? llmConfig.baseUrl.replace(/\/$/, '')
-    : `${llmConfig.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const messages = [{ role: 'system', content: getOfficePrompt() }, ...officeConversationMessages, { role: 'user', content: input }];
-  const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llmConfig.apiKey}` }, body: JSON.stringify({ model: llmConfig.model, messages, temperature: 0.5 }) });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error?.message || `LLM returned ${response.status}`);
-  const content = body.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error('LLM response did not contain text.');
-  const output = content.trim();
-  officeConversationMessages.push({ role: 'user', content: input }, { role: 'assistant', content: output });
-  officeConversationMessages = officeConversationMessages.slice(-16);
-  return output;
 }
 
 async function respondAndSynthesize(input, source = 'user') {
@@ -810,15 +714,6 @@ ipcMain.handle('tts:synthesize', async (_event, text) => {
   const normalized = text.trim();
   if (normalized.length > 500) throw new Error('单次文本不能超过 500 个字符。');
   return respondAndSynthesize(normalized);
-});
-
-ipcMain.handle('office:ask', async (_event, text) => {
-  if (typeof text !== 'string' || !text.trim()) throw new Error('请输入需要处理的文本。');
-  const normalized = text.trim();
-  if (normalized.length > 6000) throw new Error('单次文本不能超过 6000 个字符。');
-  const output = await requestOfficeLlm(normalized);
-  showTextOutput(output);
-  return { text: output };
 });
 
 app.whenReady().then(() => {

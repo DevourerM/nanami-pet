@@ -16,7 +16,7 @@ nanami-pet/
 │     ├─ config/
 │     └─ tts_server.py
 ├─ assets/
-│  └─ voice-reference/            # 日语参考音频（不提交）
+│  └─ voice-references/           # 多情感日语参考音频与转写表（不提交）
 └─ icon.png                       # 自行准备的透明 PNG 图标（不提交）
 ```
 
@@ -48,7 +48,7 @@ vendor/live2dcubismcore.min.js
 assets/voice-references/
 ```
 
-启动桌宠时会自动托管该服务并检查 `http://127.0.0.1:9880/health`。如需单独排错，可在 `services/nanami-tts/` 中运行 `start-tts-server.cmd`。
+启动桌宠时会自动托管该服务并检查 `http://127.0.0.1:9880/health`，不需要单独启动 BAT。
 
 GPT-SoVITS 上游项目与模型、权重、运行时均受各自许可证和使用条件约束，请从官方或你获授权的来源获取，不要把它们提交到此仓库。
 

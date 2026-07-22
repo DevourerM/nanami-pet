@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Text output</title>
+    <link rel="stylesheet" href="text-output.css">
+  </head>
+  <body>
+    <main id="text-output">
+      <header id="text-toolbar">
+        <span aria-hidden="true"></span>
+        <button id="copy" type="button" aria-label="Copy" title="Copy"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+        <button id="close" type="button" aria-label="Close" title="Close">&times;</button>
+      </header>
+      <pre id="text-content"></pre>
+    </main>
+    <script src="text-output.js"></script>
+  </body>
+</html>

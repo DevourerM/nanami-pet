@@ -1,34 +1,37 @@
 # nanami-pet
 
-基于 Electron、Live2D、OpenAI 兼容 API 与 GPT-SoVITS 的本地桌面宠物。角色为《RIDDLE JOKER》的在原七海；回复由兼容 OpenAI Chat Completions 的 API 生成，显示中文、TTS 朗读日语。
+一个基于 Electron、Live2D、OpenAI 兼容 API 与 GPT-SoVITS 的本地桌面宠物。七海以日语语音回应，并同步显示中文；触碰、待机与输入框都走同一条 Agent → 情感参考 TTS 流程。
 
-## 本仓库包含与不包含的内容
+## 功能
 
-仓库只保存应用源码、提示词、依赖清单和安装指引。
-
-不会提交 Live2D 模型、Cubism Core、GPT-SoVITS 推理环境、训练权重、参考音频、生成音频、`node_modules` 或本地图标。它们需要由使用者根据 [外部资产安装](docs/ASSET_SETUP.md) 在本地放置；请确认拥有相应资源的使用权。
+- Live2D 角色互动、触碰事件与随机待机事件
+- OpenAI Chat Completions 兼容接口，可配置任意兼容服务的地址、模型和 Key
+- 自动选择日语情感参考音频，输出中文显示与日语语音
+- 可复制的持久文本窗口，用于翻译、总结、清单和其他办公型结果
+- 鼠标穿透、置顶、视线跟随、音量与历史记录控制
+- **专注模式**：仍保留文字回应和角色动作，但暂停当前音频、跳过后续 TTS 合成与播放
 
 ## 本地启动
 
-1. 完成 [外部资产安装](docs/ASSET_SETUP.md)。
-2. 安装 Node.js LTS，然后在项目根目录运行 `npm ci`。
-3. 双击项目根目录的 `Nanami Pet.exe` 启动桌宠；开发调试时使用 `npm start`。
-4. 在设置中填写 OpenAI 兼容的 API 地址、模型名称与 API Key。密钥仅保存到本机 Electron 用户数据目录，不能提交到 Git。
+1. 按照 [外部资产安装说明](docs/ASSET_SETUP.md) 放置已获授权的 Live2D、GPT-SoVITS 运行时、模型和参考音频。
+2. 安装 Node.js LTS，在项目根目录运行 `npm ci`。
+3. 运行 `npm run build:launcher`，生成根目录的 `Nanami Pet.exe`；之后双击它即可启动桌宠。开发调试可使用 `npm start`。
+4. 在设置中填写 OpenAI 兼容 API 的地址、模型和 API Key。密钥只保存在本机 Electron 用户数据目录。
 
-可运行 `npm run doctor` 检查 Live2D 模型和 Cubism Core 是否已放置。
+可使用 `npm run doctor` 检查 Live2D 模型和 Cubism Core 是否已就位。
 
-## 分支约定
+## 资源与隐私
 
-- `main`：发布分支，只接收经过验证的版本。
-- `develop`：日常集成分支，默认开发入口。
-- `feature/<topic>`：从 `develop` 切出；完成后通过 Pull Request 合并回 `develop`。
-- 发布时提交 `develop -> main` 的 Pull Request，并在合并后打版本标签，例如 `v0.1.0`。
+仓库仅包含应用源代码、提示词和安装说明；不会提交 Live2D 模型、Cubism Core、GPT-SoVITS 运行时、训练权重、参考音频、生成音频、`node_modules` 或本地图标。请仅使用你有权使用的资源，详情见 [外部资产安装说明](docs/ASSET_SETUP.md)。
 
-建议在 GitHub 仓库设置中将 `main` 设为默认分支，并为 `main` 启用 Pull Request 审核与禁止直接推送的分支保护规则。
+## 分支与发布
+
+- `main`：稳定发布分支。
+- `develop`：日常集成分支。
+- `feature/<topic>`：从 `develop` 创建，完成后通过 PR 合并回 `develop`。
+
+发布流程为 `develop → main` 的 Pull Request；合并后创建语义化版本标签。
 
 ## 许可与致谢
 
-应用代码以本仓库后续声明的许可为准。角色与第三方资源不随代码授权；其来源、归属与本地准备方式见 [外部资产安装](docs/ASSET_SETUP.md)。
-\n## Windows 启动器
-
-在已放置本地资产并完成 `npm ci` 后，运行 `npm run build:launcher`。它会使用项目根目录的 `icon.png` 生成 `Nanami Pet.exe`。将该 EXE 保留在项目根目录，双击即可启动桌宠，无需使用 BAT；它不会打包或上传 Live2D、GPT-SoVITS 运行时、模型和参考音频。
+应用代码以仓库内许可证为准。角色及第三方资源不随代码授予使用权；请遵循其各自的来源与许可条件。

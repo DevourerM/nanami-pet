@@ -16,7 +16,7 @@ const PET_HEIGHT = PET_MODEL_HEIGHT;
 const COMPOSER_WIDTH = 408;
 const COMPOSER_HEIGHT = 104;
 const SETTINGS_WIDTH = 236;
-const SETTINGS_HEIGHT = 456;
+const SETTINGS_HEIGHT = 496;
 const HISTORY_WIDTH = 420;
 const HISTORY_HEIGHT = 480;
 const TEXT_OUTPUT_WIDTH = 460;
@@ -45,7 +45,7 @@ let outputAcceptsMouse = false;
 let petControlHover = false;
 let agentRuntime;
 const attachmentRegistry = new Map();
-const petSettings = { clickThrough: false, alwaysOnTop: true, mouseFollow: true, volume: 1 };
+const petSettings = { clickThrough: false, alwaysOnTop: true, mouseFollow: true, focusMode: false, volume: 1 };
 const llmConfig = { baseUrl: '', apiKey: '', model: '' };
 
 function settingsFilePath() {
@@ -58,6 +58,7 @@ function loadPetSettings() {
     petSettings.clickThrough = Boolean(stored.clickThrough);
     petSettings.alwaysOnTop = stored.alwaysOnTop !== false;
     petSettings.mouseFollow = stored.mouseFollow !== false;
+    petSettings.focusMode = Boolean(stored.focusMode);
     petSettings.volume = Number.isFinite(stored.volume) ? Math.max(0, Math.min(2, stored.volume)) : 1;
     Object.assign(llmConfig, stored.llm || {});
   } catch {}
@@ -97,6 +98,7 @@ function updatePetSettings(patch) {
   if (typeof patch.clickThrough === 'boolean') petSettings.clickThrough = patch.clickThrough;
   if (typeof patch.alwaysOnTop === 'boolean') petSettings.alwaysOnTop = patch.alwaysOnTop;
   if (typeof patch.mouseFollow === 'boolean') petSettings.mouseFollow = patch.mouseFollow;
+  if (typeof patch.focusMode === 'boolean') petSettings.focusMode = patch.focusMode;
   if (Number.isFinite(patch.volume)) petSettings.volume = Math.max(0, Math.min(2, patch.volume));
   if (patch.llm && typeof patch.llm === 'object') {
     for (const key of ['baseUrl', 'apiKey', 'model']) {
@@ -123,14 +125,15 @@ function getAgentRuntime() {
 
 async function respondAndSynthesize(input, source = 'user') {
   const reply = await getAgentRuntime().respond({ input, source });
-  await ensureTtsService();
-  const audio = await synthesize(reply.speech, reply.emotion);
+  const focusMode = petSettings.focusMode;
+  const audio = focusMode ? null : await ensureTtsService().then(() => synthesize(reply.speech, reply.emotion));
   appendHistory({ input, output: reply.display, createdAt: new Date().toISOString() });
   showOutput(reply.display);
+  if (focusMode) finishOutputPlayback();
   for (const skillCall of reply.skillCalls) {
     if (skillCall.name === 'present_text') showTextOutput(skillCall.arguments.content);
   }
-  return { text: reply.display, audioBase64: audio.toString('base64') };
+  return { text: reply.display, audioBase64: audio?.toString('base64') || null, focusMode };
 }
 
 function historyFilePath() {

@@ -56,6 +56,7 @@
   let touchAudio;
   let audioContext;
   let volume = 1;
+  let focusMode = false;
   let eventSpeechBusy = false;
   function base64ToBlob(base64) {
     const binary = atob(base64);
@@ -84,7 +85,12 @@
     eventSpeechBusy = true;
     try {
       const result = await petHost.synthesizeEvent(eventText);
-      if (!result || !result.audioBase64) return false;
+      if (!result) return false;
+      if (!result.audioBase64) {
+        beforePlayback?.();
+        playMotion?.();
+        return true;
+      }
       if (touchAudio) {
         touchAudio.pause();
         URL.revokeObjectURL(touchAudio.src);
@@ -161,6 +167,7 @@
 
   let mouseFollow = settings?.mouseFollow !== false;
   volume = settings?.volume ?? 1;
+  focusMode = Boolean(settings?.focusMode);
     pet.classList.toggle('is-click-through', Boolean(settings?.clickThrough));
     window.addEventListener('pointermove', (event) => {
       if (mouseFollow) model.focus(event.clientX, event.clientY);
@@ -168,6 +175,14 @@
     petHost.onSettingsChanged((nextSettings) => {
       mouseFollow = nextSettings?.mouseFollow !== false;
       volume = nextSettings?.volume ?? 1;
+      const nextFocusMode = Boolean(nextSettings?.focusMode);
+      if (nextFocusMode && !focusMode && touchAudio) {
+        touchAudio.pause();
+        URL.revokeObjectURL(touchAudio.src);
+        touchAudio = undefined;
+        petHost.completePlayback();
+      }
+      focusMode = nextFocusMode;
       pet.classList.toggle('is-click-through', Boolean(nextSettings?.clickThrough));
       if (!mouseFollow) {
         // FocusController 的 (0, 0) 就是模型默认的正前方，平滑回正。

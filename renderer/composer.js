@@ -12,6 +12,7 @@
   let audioContext;
   let closing = false;
   let volume = 1;
+  let focusMode = false;
   let attachments = [];
   let isProcessing = false;
 
@@ -122,6 +123,12 @@
     setProcessing(true);
     try {
       const result = await composerHost.synthesize(text);
+      if (!result.audioBase64) {
+        input.value = '';
+        clearAttachments();
+        clearError();
+        return;
+      }
       audio?.pause();
       audio = new Audio(URL.createObjectURL(blob(result.audioBase64)));
       audio.volume = Math.min(volume, 1);
@@ -163,10 +170,23 @@
       setTimeout(() => composerHost.hide(), 145);
     }
   };
-  composerHost.getSettings().then((settings) => { volume = settings.volume ?? 1; });
+  composerHost.getSettings().then((settings) => {
+    volume = settings.volume ?? 1;
+    focusMode = Boolean(settings.focusMode);
+  });
   composerHost.onFocus(() => input.focus());
   composerHost.onOpen(() => { closing = false; });
-  composerHost.onSettingsChanged((settings) => { volume = settings.volume ?? 1; });
+  composerHost.onSettingsChanged((settings) => {
+    volume = settings.volume ?? 1;
+    const nextFocusMode = Boolean(settings.focusMode);
+    if (nextFocusMode && !focusMode && audio) {
+      audio.pause();
+      URL.revokeObjectURL(audio.src);
+      audio = undefined;
+      composerHost.completePlayback();
+    }
+    focusMode = nextFocusMode;
+  });
   composerHost.onCloseRequest(() => {
     closing = true;
     setTimeout(() => composerHost.hide(), 145);

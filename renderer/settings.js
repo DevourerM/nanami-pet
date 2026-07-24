@@ -9,6 +9,14 @@
   const volume = document.querySelector('#volume-input');
   const volumeValue = document.querySelector('#volume-value');
   const state = document.querySelector('#api-state');
+  const personaName = document.querySelector('#persona-name');
+  const pageButtons = [...document.querySelectorAll('#settings-nav [data-page]')];
+  const pages = [...document.querySelectorAll('.settings-page')];
+
+  function showPage(page) {
+    pageButtons.forEach((button) => button.setAttribute('aria-selected', String(button.dataset.page === page)));
+    pages.forEach((section) => { section.hidden = section.dataset.page !== page; });
+  }
 
   function render(settings) {
     toggleIds.forEach((id) => toggles[id].setAttribute('aria-pressed', String(settings[toCamelCase(id)])));
@@ -18,6 +26,7 @@
     volume.value = Math.round((settings.volume ?? 1) * 100);
     volumeValue.value = `${volume.value}%`;
     state.textContent = url.value && model.value && key.value ? '已保存' : '未配置';
+    personaName.value = settings.persona?.name || '在原七海';
   }
 
   toggleIds.forEach((id) => {
@@ -26,6 +35,7 @@
       render(await settingsHost.update({ [toCamelCase(id)]: !settings[toCamelCase(id)] }));
     };
   });
+  pageButtons.forEach((button) => { button.onclick = () => showPage(button.dataset.page); });
   volume.oninput = () => { volumeValue.value = `${volume.value}%`; };
   volume.onchange = async () => render(await settingsHost.update({ volume: Number(volume.value) / 100 }));
   document.querySelector('#settings-close').onclick = () => settingsHost.hide();
@@ -33,6 +43,8 @@
     llm: { baseUrl: url.value.trim(), model: model.value.trim(), apiKey: key.value.trim() },
   }));
   document.querySelector('#clear-context').onclick = () => settingsHost.clearContext();
+  document.querySelector('#persona-import').onclick = async () => render(await settingsHost.importPersona());
+  document.querySelector('#persona-export').onclick = async () => render(await settingsHost.exportPersona());
   document.querySelector('#history').onclick = () => settingsHost.toggleHistory();
   document.querySelector('#clear-history').onclick = () => settingsHost.clearHistory();
   settingsHost.get().then(render);

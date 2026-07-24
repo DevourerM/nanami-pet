@@ -1,0 +1,14 @@
+#settings{display:block;padding:31px 10px 10px}
+#settings-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:0 0 8px;-webkit-app-region:no-drag}
+#settings-nav button{height:27px;border:0;border-radius:7px;color:#9e9e9e;background:transparent;cursor:pointer;font:11px system-ui}
+#settings-nav button:hover{color:#e7e7e7;background:rgb(255 255 255/6%)}
+#settings-nav button[aria-selected=true]{color:#f2f2f2;background:rgb(255 255 255/11%)}
+.settings-page{display:grid;gap:3px}.settings-page[hidden]{display:none}
+#llm,#persona{margin:0}
+#persona{display:grid;gap:5px;padding:8px;border:1px solid rgb(255 255 255/9%);border-radius:9px;-webkit-app-region:no-drag}
+#persona label{display:grid;grid-template-columns:54px 1fr;align-items:center;color:#999;font-size:10px}
+#persona input{height:25px;min-width:0;border:1px solid rgb(255 255 255/10%);border-radius:6px;padding:0 6px;color:#eee;background:#171717;outline:0;font:10px ui-monospace}
+#persona div{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+#persona button{display:flex;height:27px;align-items:center;justify-content:center;border:0;border-radius:8px;color:#ddd;background:transparent;cursor:pointer;font:10px system-ui;-webkit-app-region:no-drag}
+#persona button:hover{background:rgb(255 255 255/7%)}
+#history-actions{margin-top:3px}

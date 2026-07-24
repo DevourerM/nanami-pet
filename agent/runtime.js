@@ -1,6 +1,7 @@
 'use strict';
 
 const presentText = require('./tools/present-text');
+const memorySearch = require('./tools/memory-search');
 
 const EMOTIONS = new Set([
   'neutral', 'happy', 'sad', 'angry', 'surprised', 'fearful', 'disgusted',
@@ -15,11 +16,13 @@ function normalizeEmotion(value) {
 }
 
 class AgentRuntime {
-  constructor({ getConfig, getPrompt }) {
+  constructor({ getConfig, getPrompt, searchMemory, getMemoryBrief }) {
     this.getConfig = getConfig;
     this.getPrompt = getPrompt;
+    this.searchMemory = searchMemory;
+    this.getMemoryBrief = getMemoryBrief;
     this.conversation = [];
-    this.skills = [presentText];
+    this.skills = [presentText, memorySearch];
   }
 
   clearContext() {
@@ -72,8 +75,9 @@ class AgentRuntime {
   async respond({ input, source = 'user' }) {
     const activeSkills = this.selectSkills(input, source);
     const enabledSkillNames = new Set(activeSkills.map((skill) => skill.name));
+    const memoryBrief = this.getMemoryBrief?.() || '';
     const messages = [
-      { role: 'system', content: this.getPrompt({ source, skills: activeSkills }) },
+      { role: 'system', content: this.getPrompt({ source, skills: activeSkills, now: new Date(), memoryBrief }) },
       ...this.conversation,
       { role: 'user', content: input },
     ];
@@ -88,12 +92,20 @@ class AgentRuntime {
 
     const stagedSkills = [];
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    const toolResults = toolCalls.map((call) => {
+    const toolResults = await Promise.all(toolCalls.map(async (call) => {
       const skill = activeSkills.find((candidate) => candidate.name === call.function?.name);
       const arguments_ = skill ? skill.parseArguments(call.function.arguments) : null;
-      if (arguments_) stagedSkills.push({ name: skill.name, arguments: arguments_ });
-      return { role: 'tool', tool_call_id: call.id, content: JSON.stringify({ accepted: Boolean(arguments_) }) };
-    });
+      if (!arguments_) return { role: 'tool', tool_call_id: call.id, content: JSON.stringify({ accepted: false }) };
+      if (skill.name === presentText.name) stagedSkills.push({ name: skill.name, arguments: arguments_ });
+      try {
+        const result = skill.execute
+          ? await skill.execute(arguments_, { searchMemory: this.searchMemory })
+          : { accepted: true };
+        return { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) };
+      } catch {
+        return { role: 'tool', tool_call_id: call.id, content: JSON.stringify({ accepted: false, error: 'Tool unavailable.' }) };
+      }
+    }));
     if (toolResults.length) {
       message = await this.requestCompletion([...messages, message, ...toolResults], []);
       if (!message) throw new Error('LLM did not return a final reply after tool use.');

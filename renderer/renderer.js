@@ -5,11 +5,12 @@
   const notice = document.querySelector('#notice');
   const voiceToggle = document.querySelector('#voice-toggle');
   const settingsToggle = document.querySelector('#settings-toggle');
+  const memoryToggle = document.querySelector('#memory-toggle');
 
   let controlsHover = false;
   function updateControlHitTest(event) {
     const margin = 10;
-    const interactive = [voiceToggle, settingsToggle].some((control) => {
+    const interactive = [voiceToggle, settingsToggle, memoryToggle].some((control) => {
       const bounds = control.getBoundingClientRect();
       return event.clientX >= bounds.left - margin && event.clientX <= bounds.right + margin
         && event.clientY >= bounds.top - margin && event.clientY <= bounds.bottom + margin;
@@ -48,7 +49,17 @@
     const visible = await petHost.toggleSettings();
     settingsToggle.classList.toggle('is-active', visible);
   });
-  [voiceToggle, settingsToggle].forEach((control) => {
+  function renderMemoryToggle(enabled) {
+    memoryToggle.classList.toggle('is-active', Boolean(enabled));
+    const label = enabled ? '停止日常记录' : '开启日常记录';
+    memoryToggle.setAttribute('aria-label', label);
+    memoryToggle.title = label;
+  }
+  memoryToggle.addEventListener('click', async () => {
+    const nextSettings = await petHost.toggleMemory();
+    renderMemoryToggle(nextSettings?.memoryEnabled);
+  });
+  [voiceToggle, settingsToggle, memoryToggle].forEach((control) => {
     control.addEventListener('mouseenter', () => petHost.setControlsHover(true));
     control.addEventListener('mouseleave', () => petHost.setControlsHover(false));
   });
@@ -168,6 +179,7 @@
   let mouseFollow = settings?.mouseFollow !== false;
   volume = settings?.volume ?? 1;
   focusMode = Boolean(settings?.focusMode);
+    renderMemoryToggle(Boolean(settings?.memoryEnabled));
     pet.classList.toggle('is-click-through', Boolean(settings?.clickThrough));
     window.addEventListener('pointermove', (event) => {
       if (mouseFollow) model.focus(event.clientX, event.clientY);
@@ -183,6 +195,7 @@
         petHost.completePlayback();
       }
       focusMode = nextFocusMode;
+      renderMemoryToggle(Boolean(nextSettings?.memoryEnabled));
       pet.classList.toggle('is-click-through', Boolean(nextSettings?.clickThrough));
       if (!mouseFollow) {
         // FocusController 的 (0, 0) 就是模型默认的正前方，平滑回正。
@@ -231,6 +244,13 @@
     }
     window.addEventListener('pointerdown', markInteraction);
     petHost.onActivity(markInteraction);
+    petHost.onWorkActivity(() => {
+      if (eventSpeechBusy) return;
+      markInteraction();
+      void speakEventInput('（持续工作中）', () => {
+        model.motion(Math.random() < 0.76 ? 'Idle' : 'Leave30_20_30');
+      });
+    });
     // Start 是模型自带的入场动作。与触碰相同，必须等 LLM 回复和 TTS 音频均准备完成后，才与语音同步启动。
     void speakEventInput(
       '（入场）',

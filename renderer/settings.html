@@ -5,26 +5,42 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>设置</title>
   <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="settings-sections.css">
 </head>
 <body>
   <main id="settings">
     <button id="settings-close" type="button" aria-label="关闭">&times;</button>
-    <button class="row" id="mouse-follow">视线跟随鼠标<i></i></button>
-    <button class="row" id="click-through">鼠标穿透<i></i></button>
-    <button class="row" id="always-on-top">保持置顶<i></i></button>
-    <button class="row" id="focus-mode">专注模式<i></i></button>
-    <label id="volume">音量 <input id="volume-input" type="range" min="0" max="200"><output id="volume-value"></output></label>
-    <section id="llm">
-      <label>API 地址<input id="url"></label>
-      <label>模型<input id="model"></label>
-      <label>API Key<input id="key" type="password"></label>
-      <small id="api-state"></small>
-      <div><button id="save">保存 API</button><button id="clear-context">清空上下文</button></div>
+    <nav id="settings-nav" aria-label="设置分类">
+      <button type="button" data-page="general" aria-selected="true">通用</button>
+      <button type="button" data-page="chat" aria-selected="false">对话</button>
+      <button type="button" data-page="memory" aria-selected="false">记忆</button>
+    </nav>
+    <section class="settings-page" data-page="general">
+      <button class="row" id="mouse-follow">视线跟随鼠标<i></i></button>
+      <button class="row" id="click-through">鼠标穿透<i></i></button>
+      <button class="row" id="always-on-top">保持置顶<i></i></button>
+      <button class="row" id="focus-mode">专注模式<i></i></button>
+      <label id="volume">音量 <input id="volume-input" type="range" min="0" max="200"><output id="volume-value"></output></label>
     </section>
-    <div id="history-actions">
-      <button class="row" id="history">查看记录 <b>›</b></button>
-      <button class="row" id="clear-history">清空记录</button>
-    </div>
+    <section class="settings-page" data-page="chat" hidden>
+      <section id="llm">
+        <label>API 地址<input id="url"></label>
+        <label>模型<input id="model"></label>
+        <label>API Key<input id="key" type="password"></label>
+        <small id="api-state"></small>
+        <div><button id="save">保存 API</button><button id="clear-context">清空上下文</button></div>
+      </section>
+    </section>
+    <section class="settings-page" data-page="memory" hidden>
+      <section id="persona">
+        <label>当前人格<input id="persona-name" readonly></label>
+        <div><button id="persona-import">导入人格</button><button id="persona-export">导出人格</button></div>
+      </section>
+      <div id="history-actions">
+        <button class="row" id="history">查看记录 <b>›</b></button>
+        <button class="row" id="clear-history">清空记录</button>
+      </div>
+    </section>
   </main>
   <script src="settings.js"></script>
 </body>

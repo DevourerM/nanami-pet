@@ -1,0 +1,11 @@
+#memory-toggle{position:fixed;z-index:4;display:grid;width:36px;height:36px;place-items:center;border:1px solid rgb(255 255 255 / 15%);border-radius:11px;color:#d8d8d8;background:rgb(26 26 26 / 88%);box-shadow:0 8px 22px rgb(0 0 0 / 28%);cursor:pointer;opacity:.2;transition:opacity .16s ease,background .16s ease,transform .16s ease}
+#memory-toggle:hover,#memory-toggle:focus-visible{opacity:1;outline:none;background:rgb(43 43 43 / 96%);transform:translateY(-1px)}
+#memory-toggle.is-active{color:#8be0c4;border-color:rgb(16 163 127 / 48%);background:rgb(16 163 127 / 21%)}
+#memory-toggle svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.6}
+main:hover #memory-toggle{opacity:.88}
+#pet.is-click-through #memory-toggle{opacity:.72}
+/* 右侧控制组纵向排列，避免与角色和输出气泡争夺横向空间。 */
+#voice-toggle,#settings-toggle,#memory-toggle{right:16px}
+#voice-toggle{bottom:108px}
+#settings-toggle{bottom:150px}
+#memory-toggle{bottom:192px}

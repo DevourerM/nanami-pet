@@ -21,6 +21,8 @@ assets/
 icon.png
 Nanami Pet.exe
 launcher/.build/
+personas/
+memory/
 
 # Generated local media and credentials
 *.wav

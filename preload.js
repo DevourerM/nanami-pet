@@ -7,10 +7,12 @@ contextBridge.exposeInMainWorld('petHost', {
   setControlsHover: (active) => ipcRenderer.send('pet:controls-hover', active),
   toggleComposer: () => ipcRenderer.invoke('composer:toggle'),
   toggleSettings: () => ipcRenderer.invoke('settings:toggle'),
+  toggleMemory: () => ipcRenderer.invoke('memory:toggle'),
   synthesizeEvent: (eventText) => ipcRenderer.invoke('conversation:event', eventText),
   completePlayback: () => ipcRenderer.send('conversation:playback-ended'),
   onSettingsChanged: (callback) => ipcRenderer.on('pet:settings', (_event, settings) => callback(settings)),
   onActivity: (callback) => ipcRenderer.on('pet:activity', callback),
+  onWorkActivity: (callback) => ipcRenderer.on('pet:work-activity', callback),
 });
 
 contextBridge.exposeInMainWorld('composerHost', {
@@ -43,6 +45,8 @@ contextBridge.exposeInMainWorld('textOutputHost', {
 contextBridge.exposeInMainWorld('settingsHost', {
   get: () => ipcRenderer.invoke('settings:get'),
   update: (patch) => ipcRenderer.invoke('settings:update', patch),
+  importPersona: () => ipcRenderer.invoke('persona:import'),
+  exportPersona: () => ipcRenderer.invoke('persona:export'),
   clearContext: () => ipcRenderer.invoke('conversation:clear'),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
   hide: () => ipcRenderer.invoke('settings:hide'),
